@@ -1,9 +1,11 @@
+#!/usr/bin/env python3
 import gi
 import subprocess
+import threading  # Added for background loading
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Gio, GObject, Adw, Gdk
+from gi.repository import Gtk, Adw, GLib  # Added GLib for UI thread communication
 
 
 class IconPicker(Adw.Window):
@@ -17,14 +19,55 @@ class IconPicker(Adw.Window):
         self.selected_icon_path = None
         self.filters = {}
 
-        self.stack = Adw.ViewStack()
-        self.stack.set_vexpand(True)
+        # The main stack now handles the transition from Loading -> Main UI
+        self.main_stack = Gtk.Stack()
+        self.main_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
 
+        self.view_stack = Adw.ViewStack()
+        self.view_stack.set_vexpand(True)
+
+        self._build_loading_ui()
         self._build_ui()
-        self._populate_categories()
+
+        self.set_content(self.main_stack)
+
+        # Start loading in the background
+        threading.Thread(target=self._load_data_async, daemon=True).start()
+
+    def _build_loading_ui(self):
+        """Creates a splash/loading screen."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+
+        icon = Gtk.Image.new_from_icon_name("io.github.killown.icon_picker")
+        icon.set_pixel_size(128)
+
+        spinner = Gtk.Spinner()
+        spinner.start()
+        spinner.set_size_request(32, 32)
+
+        label = Gtk.Label(label="Indexing system icons...")
+        label.add_css_class("title-1")
+
+        box.append(icon)
+        box.append(label)
+        box.append(spinner)
+
+        self.main_stack.add_named(box, "loading")
+
+    def _load_data_async(self):
+        """Heavy lifting done in a background thread."""
+        icon_sets = self._get_icon_data()
+        # Schedule the UI update on the main thread
+        GLib.idle_add(self._on_data_loaded, icon_sets)
+
+    def _on_data_loaded(self, icon_sets):
+        """Switch from splash screen to the main app."""
+        self._populate_categories(icon_sets)
+        self.main_stack.set_visible_child_name("main")
 
     def _get_icon_data(self):
-        # Added "All" to track every icon
         data = {
             "All": Gtk.StringList(),
             "Applications": Gtk.StringList(),
@@ -36,9 +79,7 @@ class IconPicker(Adw.Window):
 
         all_icons = self.icon_theme.get_icon_names()
         for name in sorted(all_icons):
-            # Always add to "All"
             data["All"].append(name)
-
             if name.endswith("-symbolic"):
                 data["Symbolic"].append(name)
                 continue
@@ -60,10 +101,7 @@ class IconPicker(Adw.Window):
                     data["Status"].append(name)
         return data
 
-    def _populate_categories(self):
-        icon_sets = self._get_icon_data()
-
-        # Define sections with the new "All Icons" entry
+    def _populate_categories(self, icon_sets):
         sections = [
             ("All", "All Icons", "Every icon in the theme", "view-grid-symbolic"),
             (
@@ -87,20 +125,16 @@ class IconPicker(Adw.Window):
                 expression=Gtk.PropertyExpression.new(Gtk.StringObject, None, "string")
             )
             filter_obj.set_match_mode(Gtk.StringFilterMatchMode.SUBSTRING)
-
             filter_model = Gtk.FilterListModel(model=base_model, filter=filter_obj)
             self.filters[context_key.lower()] = filter_obj
 
             grid = self._create_icon_grid(filter_model)
-            self.stack.add_titled(grid, context_key.lower(), label)
+            self.view_stack.add_titled(grid, context_key.lower(), label)
 
             row = Adw.ActionRow(title=label, subtitle=subtitle)
             row_icon = Gtk.Image.new_from_icon_name(icon_name)
             row_icon.set_pixel_size(32)
-            row_icon.set_margin_start(6)
-            row_icon.set_margin_end(12)
             row.add_prefix(row_icon)
-
             row.set_metadata(context_key.lower())
             self.sidebar_list.append(row)
 
@@ -113,29 +147,20 @@ class IconPicker(Adw.Window):
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", self._on_factory_setup)
         factory.connect("bind", self._on_factory_bind)
-
         selection = Gtk.SingleSelection(model=model)
         selection.connect("selection-changed", self._on_selection_changed)
-
         grid_view = Gtk.GridView(
             model=selection, factory=factory, max_columns=12, min_columns=4
         )
         grid_view.set_vexpand(True)
-        grid_view.add_css_class("icon-grid")
-
         scrolled.set_child(grid_view)
         return scrolled
 
     def _on_factory_setup(self, f, li):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        box.set_margin_start(12)
         box.set_margin_end(12)
-        box.set_margin_top(12)
-        box.set_margin_bottom(12)
-
         img = Gtk.Image(pixel_size=48)
         lbl = Gtk.Label(ellipsize=3, max_width_chars=14)
-        lbl.add_css_class("body")
         box.append(img)
         box.append(lbl)
         li.set_child(box)
@@ -157,14 +182,13 @@ class IconPicker(Adw.Window):
             )
             if paintable and (file := paintable.get_file()):
                 self.selected_icon_path = file.get_path()
-
             self.copy_name_btn.set_sensitive(True)
             self.copy_path_btn.set_sensitive(True)
             self.copy_img_btn.set_sensitive(True)
 
     def _on_search_changed(self, entry):
         text = entry.get_text()
-        current_cat = self.stack.get_visible_child_name()
+        current_cat = self.view_stack.get_visible_child_name()
         if current_cat in self.filters:
             self.filters[current_cat].set_search(text)
 
@@ -174,12 +198,11 @@ class IconPicker(Adw.Window):
                 with open(self.selected_icon_path, "rb") as f:
                     subprocess.run(["wl-copy"], input=f.read(), check=True)
                 self.toast_overlay.add_toast(
-                    Adw.Toast(title="Image copied to system clipboard")
+                    Adw.Toast(title="Image copied to clipboard")
                 )
             except Exception as e:
                 self.toast_overlay.add_toast(Adw.Toast(title=f"Error: {str(e)}"))
             return
-
         clipboard = self.get_display().get_clipboard()
         text = self.selected_icon_name if mode == "name" else self.selected_icon_path
         if text:
@@ -209,16 +232,14 @@ class IconPicker(Adw.Window):
         header.pack_end(self.copy_img_btn)
 
         main_box.append(header)
-
         split_view = Adw.NavigationSplitView(vexpand=True)
 
         sidebar_page = Adw.NavigationPage(title="Categories")
         self.sidebar_list = Gtk.ListBox()
         self.sidebar_list.add_css_class("navigation-sidebar")
-        self.sidebar_list.set_margin_top(12)
         self.sidebar_list.connect(
             "row-selected",
-            lambda lb, row: self.stack.set_visible_child_name(row.get_metadata())
+            lambda lb, row: self.view_stack.set_visible_child_name(row.get_metadata())
             if row
             else None,
         )
@@ -228,14 +249,14 @@ class IconPicker(Adw.Window):
         sidebar_page.set_child(sw)
 
         content_page = Adw.NavigationPage(title="Icons")
-        content_page.set_child(self.stack)
+        content_page.set_child(self.view_stack)
 
         split_view.set_sidebar(sidebar_page)
         split_view.set_content(content_page)
         main_box.append(split_view)
 
         self.toast_overlay.set_child(main_box)
-        self.set_content(self.toast_overlay)
+        self.main_stack.add_named(self.toast_overlay, "main")
 
 
 # Metadata helpers
@@ -243,6 +264,6 @@ Adw.ActionRow.set_metadata = lambda self, d: setattr(self, "_metadata", d)
 Adw.ActionRow.get_metadata = lambda self: getattr(self, "_metadata", None)
 
 if __name__ == "__main__":
-    app = Adw.Application(application_id="org.example.IconPicker")
+    app = Adw.Application(application_id="io.github.killown.icon_picker")
     app.connect("activate", lambda a: IconPicker(application=a).present())
     app.run(None)

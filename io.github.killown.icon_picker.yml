@@ -1,0 +1,37 @@
+app-id: io.github.killown.icon_picker
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: icon_picker.py
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Allow the app to register its D-Bus service
+  - --own-name=io.github.killown.icon_picker
+  # Icon paths
+  - --filesystem=xdg-data/icons:ro
+  - --filesystem=~/.icons:ro
+  # Portal access
+  - --talk-name=org.freedesktop.portal.Flatpak
+
+modules:
+  - name: icon_picker
+    buildsystem: simple
+    build-commands:
+      - install -D icon_picker.py /app/bin/icon_picker.py
+      - chmod +x /app/bin/icon_picker.py
+      - install -D io.github.killown.icon_picker.desktop /app/share/applications/io.github.killown.icon_picker.desktop
+      - install -D io.github.killown.icon_picker.svg /app/share/icons/hicolor/scalable/apps/io.github.killown.icon_picker.svg
+      - install -D LICENSE /app/share/licenses/icon_picker/LICENSE
+    sources:
+      - type: file
+        path: icon_picker.py
+      - type: file
+        path: io.github.killown.icon_picker.desktop
+      - type: file
+        path: io.github.killown.icon_picker.svg
+      - type: file
+        path: LICENSE

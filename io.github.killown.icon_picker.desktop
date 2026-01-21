@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Icon Picker
+Comment=Browse and copy system icons
+Exec=icon_picker.py
+Icon=io.github.killown.icon_picker
+Terminal=false
+Type=Application
+Categories=Development;Utility;GTK;
+StartupNotify=true
