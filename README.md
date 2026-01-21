@@ -13,16 +13,6 @@ AGPL-3.0 License
 - **One-Click Export:** Copy icon names, system paths, or raw image data directly to your clipboard.
 - **Flatpak Ready:** Fully sandboxed and compatible with modern Linux distributions.
 
-## Folder Structure
-
-For Flatpak development, ensure your repository follows this structure:
-
-icon_picker/
-├── io.github.killown.icon_picker.yml # Build Manifest
-├── io.github.killown.icon_picker.desktop # Desktop Entry
-├── io.github.killown.icon_picker.svg # App Icon
-├── icon_picker.py # Python Source
-└── LICENSE # AGPLv3 Text
 
 ## Installation (Flatpak)
 
