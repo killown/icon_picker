@@ -18,7 +18,7 @@ AGPL-3.0 License
 
 To build and install the application locally using `flatpak-builder`:
 
-\# 1. Install GNOME SDK
+# 1. Install GNOME SDK
 flatpak install flathub org.gnome.Sdk//47 org.gnome.Platform//47
 
 # 2. Build and Install
