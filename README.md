@@ -1,6 +1,7 @@
 ![Icon Picker Logo](io.github.killown.icon_picker.svg)
 
 # Icon Picker
+<img width="1129" height="829" alt="screenshot" src="https://github.com/user-attachments/assets/67bfa5be-b933-468b-9115-30e27fa35c31" />
 
 A modern GTK4/Libadwaita utility to browse and copy system icons.
 
