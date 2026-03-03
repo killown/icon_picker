@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import gi
 import subprocess
-import threading  # Added for background loading
+import threading
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib  # Added GLib for UI thread communication
+from gi.repository import Gtk, Adw, GLib, Gdk
 
 
 class IconPicker(Adw.Window):
@@ -14,12 +14,13 @@ class IconPicker(Adw.Window):
         self.set_default_size(1100, 800)
         self.set_title("Icon Picker")
 
+        self._apply_css()
+
         self.icon_theme = Gtk.IconTheme.get_for_display(self.get_display())
         self.selected_icon_name = None
         self.selected_icon_path = None
         self.filters = {}
 
-        # The main stack now handles the transition from Loading -> Main UI
         self.main_stack = Gtk.Stack()
         self.main_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
 
@@ -31,8 +32,68 @@ class IconPicker(Adw.Window):
 
         self.set_content(self.main_stack)
 
-        # Start loading in the background
         threading.Thread(target=self._load_data_async, daemon=True).start()
+
+    def _apply_css(self):
+        css_provider = Gtk.CssProvider()
+        css_data = """
+        /* Main Grid and Cards */
+        .icon-grid {
+            margin: 16px;
+        }
+        
+        .icon-card {
+            padding: 16px;
+            border-radius: 12px;
+            transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            margin: 4px;
+        }
+
+        /* Hover and Selection States */
+        .icon-card:hover {
+            background-color: alpha(@window_fg_color, 0.05);
+        }
+
+        .icon-card:selected {
+            background-color: @accent_bg_color;
+            color: @accent_fg_color;
+            box-shadow: 0 4px 12px alpha(@black_color, 0.2);
+        }
+
+        /* Typography */
+        .icon-card label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+
+        .icon-card:selected label {
+            opacity: 1;
+            font-weight: 600;
+        }
+
+        /* Loading Screen Beauty */
+        .loading-title {
+            font-weight: 800;
+            font-size: 28pt;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, @accent_color, @success_color);
+            -gtk-background-clip: text;
+            color: transparent;
+        }
+
+        /* Sidebar Styling */
+        .navigation-sidebar {
+            padding: 8px;
+        }
+        """
+        css_provider.load_from_data(css_data, len(css_data))
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
 
     def _build_loading_ui(self):
         """Creates a splash/loading screen."""
@@ -48,7 +109,7 @@ class IconPicker(Adw.Window):
         spinner.set_size_request(32, 32)
 
         label = Gtk.Label(label="Indexing system icons...")
-        label.add_css_class("title-1")
+        label.add_css_class("loading-title")
 
         box.append(icon)
         box.append(label)
@@ -59,7 +120,6 @@ class IconPicker(Adw.Window):
     def _load_data_async(self):
         """Heavy lifting done in a background thread."""
         icon_sets = self._get_icon_data()
-        # Schedule the UI update on the main thread
         GLib.idle_add(self._on_data_loaded, icon_sets)
 
     def _on_data_loaded(self, icon_sets):
@@ -152,13 +212,15 @@ class IconPicker(Adw.Window):
         grid_view = Gtk.GridView(
             model=selection, factory=factory, max_columns=12, min_columns=4
         )
+        grid_view.add_css_class("icon-grid")
         grid_view.set_vexpand(True)
         scrolled.set_child(grid_view)
         return scrolled
 
     def _on_factory_setup(self, f, li):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        box.set_margin_end(12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.add_css_class("icon-card")
+        box.set_halign(Gtk.Align.CENTER)
         img = Gtk.Image(pixel_size=48)
         lbl = Gtk.Label(ellipsize=3, max_width_chars=14)
         box.append(img)
@@ -259,7 +321,6 @@ class IconPicker(Adw.Window):
         self.main_stack.add_named(self.toast_overlay, "main")
 
 
-# Metadata helpers
 Adw.ActionRow.set_metadata = lambda self, d: setattr(self, "_metadata", d)
 Adw.ActionRow.get_metadata = lambda self: getattr(self, "_metadata", None)
 
